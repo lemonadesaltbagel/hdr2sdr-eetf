@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hdr2sdr-eetf"
+dynamic = ["version"]
+description = "使用 ITU-R BT.2390 EETF 将 HDR 照片转换为 SDR（完全忽略 gain map）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "pillow-heif>=0.18",
+    "imagecodecs>=2024.1.1",
+    "tifffile>=2023.7.10",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+hdr2sdr = "hdr2sdr_eetf:main"
+
+[tool.setuptools]
+py-modules = ["hdr2sdr_eetf"]
+
+[tool.setuptools.dynamic]
+version = { attr = "hdr2sdr_eetf.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

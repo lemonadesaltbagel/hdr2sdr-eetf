@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[test]"
+      - run: python -m pytest -q
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: hdr2sdr-windows-x64.exe
+          - os: macos-latest
+            asset: hdr2sdr-macos-arm64
+          - os: macos-15-intel
+            asset: hdr2sdr-macos-x64
+          - os: ubuntu-22.04
+            asset: hdr2sdr-linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: python -m pip install . pyinstaller
+
+      - name: Build executable
+        shell: bash
+        run: |
+          pyinstaller --onefile --name hdr2sdr \
+            --collect-all imagecodecs --collect-all pillow_heif \
+            --hidden-import tifffile \
+            hdr2sdr_eetf.py
+          if [ "$RUNNER_OS" = "Windows" ]; then src=dist/hdr2sdr.exe; else src=dist/hdr2sdr; fi
+          mv "$src" "dist/${{ matrix.asset }}"
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          python tests/scene.py smoke
+          exe="./dist/${{ matrix.asset }}"
+          "$exe" --version
+          for f in smoke/pq.avif smoke/pq.jxl smoke/pq.png smoke/hlg.avif smoke/linear.exr; do
+            out="${f%.*}_${f##*.}_out.jpg"
+            "$exe" "$f" -o "$out"
+            test -s "$out"
+          done
+          if [ -f smoke/pq.heic ]; then "$exe" smoke/pq.heic -o smoke/heic_out.png --bits 16; test -s smoke/heic_out.png; fi
+          if "$exe" smoke/sdr.avif -o smoke/should_fail.jpg; then echo "SDR input should be refused"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Add script & checksums
+        run: |
+          cp hdr2sdr_eetf.py requirements.txt assets/
+          cd assets && sha256sum * > SHA256SUMS.txt && ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+          generate_release_notes: true
