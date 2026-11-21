@@ -79,7 +79,22 @@ hdr2sdr *.avif --format png                         # 批量转换，单张出�
 | `--bits` | 8 | 8 / 16 |
 | `--quality` | 95 | JPEG / WebP 质量 |
 | `--format` | jpg | 未指定 `-o` 时的输出格式：jpg / png / tif / webp |
+| `-j` `--threads` | 0 | 线程数，0 = 全部 CPU 核心 |
+| `--png-level` | 6 | PNG 压缩级别 0–9 |
+| `--no-optimize` | | JPEG 不做霍夫曼表优化（更快，文件约大 40%） |
 | `--no-exif` | | 不保留 EXIF（默认保留，但方向置 1、删除 MakerNote） |
+
+## 性能
+
+4800 万像素（8064×6048）PQ 照片，2 核 CPU：
+
+| 任务 | v1.0 | v1.1 |
+|---|---|---|
+| AVIF → JPEG | 19.3 s / 3.6 GB | 4.9 s / 0.8 GB |
+| AVIF → 16 bit PNG | 27.7 s / 3.6 GB | 8.5 s / 1.2 GB |
+| EXR → JPEG | 21.2 s / 3.7 GB | 4.7 s / 1.1 GB |
+
+整数码值全部经查找表转换（无逐像素幂运算）、全程 float32、按 256 行分块多线程处理、色域映射只作用于超色域像素、PNG 分块并行压缩。核心越多越快；剩余时间主要是解码与 JPEG 编码。
 
 ## 开发
 

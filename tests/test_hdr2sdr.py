@@ -161,3 +161,66 @@ def test_tiff_orientation(tmp_path):
     assert o.shape[:2] == (80, 40)
     yx = np.argwhere(o[..., 0] > 200).mean(0)
     assert yx[0] < 20 and yx[1] > 20                                 # 旋转 90° 后亮块在右上
+
+
+# ---------------------------------------------------------------- 性能优化相关的回归测试
+def test_heif_bit_depth(images):
+    if "pq.heic" not in images:
+        pytest.skip("当前平台无法生成 HEIC")
+    dec = h.decode(images["pq.heic"])
+    assert dec.code_max == float(1023 << 6)          # 10 bit 左移到 16 bit 高位
+
+
+def test_heif_pipeline_exact(images, tmp_path):
+    """以实际解码出的码值为准，管线输出应与 float64 参考实现一致（排除 HEVC 编码损失）"""
+    if "pq.heic" not in images:
+        pytest.skip("当前平台无法生成 HEIC")
+    out = tmp_path / "o.png"
+    run(images["pq.heic"], "-o", out, "--bits", "16", "--source-peak", "4000")
+    dec = h.decode(images["pq.heic"])
+    nits = h.pq_eotf(dec.raw / dec.code_max)
+    e = h.EETF(Lw=4000, Lmax=203)
+    m = np.maximum(nits.max(-1), 1e-6)
+    ref = h.gamut_fit((nits * (e(m) / m)[..., None] / 203) @ h.conversion_matrix(9, 1).T,
+                      h.rgb_to_xyz_matrix(1)[1], "compress")
+    d = np.abs(read_linear(out) - ref)
+    assert d.max() < 1e-4
+
+
+@pytest.mark.parametrize("mode", ["maxrgb", "luminance", "rgb"])
+@pytest.mark.parametrize("name", ["pq.avif", "hlg.avif", "linear.exr"])
+def test_threads_identical(images, tmp_path, name, mode):
+    import imagecodecs as ic
+    outs = []
+    for j in ("1", "4"):
+        o = tmp_path / f"o{j}.png"
+        run(images[name], "-o", o, "--bits", "16", "--mode", mode, "-j", j)
+        outs.append(ic.png_decode(o.read_bytes()))
+    assert np.array_equal(outs[0], outs[1])
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (255, 7), (257, 33), (600, 301)])
+@pytest.mark.parametrize("dtype", [np.uint8, np.uint16])
+def test_write_png_roundtrip(tmp_path, shape, dtype):
+    import imagecodecs as ic
+    q = np.random.default_rng(1).integers(0, np.iinfo(dtype).max + 1, shape + (3,), dtype=dtype)
+    p = tmp_path / "w.png"
+    h.write_png(str(p), q, 6, h.build_icc(1, "t"), None, 3)
+    assert np.array_equal(ic.png_decode(p.read_bytes()), q)
+    import struct, zlib
+    d, i, idat = p.read_bytes(), 8, b""
+    while i < len(d):
+        n, = struct.unpack(">I", d[i:i + 4])
+        if d[i + 4:i + 8] == b"IDAT":
+            idat += d[i + 8:i + 8 + n]
+        i += 12 + n
+    zlib.decompress(idat)                            # 校验 Adler-32
+
+
+def test_log_lut_accuracy():
+    e = h.EETF(Lw=2000, Lmax=203)
+    fn = lambda L: e(L) / L
+    lut = h._LogLUT(fn)
+    L = np.geomspace(1e-3, 2e4, 100000)
+    rel = np.abs(lut(L.astype(np.float32)) / fn(L) - 1)
+    assert rel.max() < 1e-5
