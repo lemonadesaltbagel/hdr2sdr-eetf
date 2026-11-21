@@ -227,6 +227,11 @@ def _pil_side_info(path: str):
         return None, 1
 
 
+_PNG_PROBE = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010800000000"
+    "3a7e9b550000000a49444154789c63600000000200015a8c6a6e0000000049454e44ae426082")
+
+
 def decode(path: str) -> Decoded:
     ext = os.path.splitext(path)[1].lower()
     data = open(path, "rb").read()
@@ -249,6 +254,11 @@ def decode(path: str) -> Decoded:
         return Decoded(_rgb3(arr), tc, pr, hf.info.get("exif"), 1, "HEIF (libheif 已应用旋转)")
 
     import imagecodecs as ic
+    try:
+        ic.png_decode(_PNG_PROBE, _info=True)
+    except TypeError:
+        raise SystemExit(f"错误：需要 imagecodecs >= 2026.11.11（当前 {ic.__version__}）才能读取 CICP 色彩信息。\n"
+                         "请运行：pip install -U imagecodecs（需要 Python >= 3.12）")
     if ext == ".avif":
         info = ic.avif_decode(data, _info=True)
         arr = _norm_uint(ic.avif_decode(data), info.get("bitspersample"))

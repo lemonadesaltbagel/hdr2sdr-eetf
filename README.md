@@ -17,7 +17,7 @@
 
 macOS / Linux 首次使用需要加执行权限：`chmod +x hdr2sdr-*`。macOS 若提示“无法验证开发者”，执行 `xattr -d com.apple.quarantine hdr2sdr-macos-*`。
 
-也可以用 pip 安装（Python ≥ 3.10）：
+也可以用 pip 安装（Python ≥ 3.12，依赖 imagecodecs ≥ 2026.11.11）：
 
 ```bash
 pip install git+https://github.com/<你的用户名>/hdr2sdr-eetf.git

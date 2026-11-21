@@ -7,12 +7,12 @@ name = "hdr2sdr-eetf"
 dynamic = ["version"]
 description = "使用 ITU-R BT.2390 EETF 将 HDR 照片转换为 SDR（完全忽略 gain map）"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.24",
     "pillow>=10.0",
     "pillow-heif>=0.18",
-    "imagecodecs>=2024.1.1",
+    "imagecodecs>=2026.11.11",
     "tifffile>=2023.7.10",
 ]
 
