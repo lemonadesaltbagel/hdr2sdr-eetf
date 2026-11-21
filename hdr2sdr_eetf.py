@@ -681,9 +681,9 @@ def _main(argv, interactive):
         print(f"hdr2sdr {__version__} — BT.2390 EETF HDR → SDR")
         inputs = _pick_files()
     inputs = [s.strip().strip('"').strip("'") for s in inputs if s.strip()]
-        if not inputs:
-            print("没有选择文件。命令行用法见 hdr2sdr --help")
-            return 1
+    if not inputs:
+        print("没有选择文件。命令行用法见 hdr2sdr --help")
+        return 1
     if args.output and len(inputs) > 1:
         p.error("-o 只能用于单个输入文件；多个文件时会在原文件旁生成 <名称>_sdr.<格式>")
 
