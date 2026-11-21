@@ -28,7 +28,7 @@ hdr2sdr_eetf.py — 用 ITU-R BT.2390 EETF 把 HDR 照片转换为 SDR 照片
 """
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 import argparse
 import io
@@ -584,14 +584,74 @@ def _utf8_console():
             pass
 
 
+_INPUT_EXTS = (".avif", ".heic", ".heif", ".hif", ".jxl", ".png", ".tif", ".tiff", ".exr")
+
+
+def _launched_by_double_click() -> bool:
+    """Windows 资源管理器双击启动时，控制台只属于本程序（onefile 打包时还有一个引导进程）"""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        buf = (ctypes.c_uint * 4)()
+        n = ctypes.windll.kernel32.GetConsoleProcessList(buf, 4)
+        return 1 <= n <= (2 if getattr(sys, "frozen", False) else 1)   # n=0：没有控制台（如 CI）
+    except Exception:
+        return False
+
+
+def _pick_files() -> list[str]:
+    """没有给出输入文件时：弹出文件选择框；不可用时改为在控制台输入（可直接把文件拖进窗口）"""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        pattern = " ".join("*" + e for e in _INPUT_EXTS)
+        files = filedialog.askopenfilenames(
+            title="选择要转换的 HDR 照片（可多选）",
+            filetypes=[("HDR 照片", pattern), ("所有文件", "*.*")])
+        root.destroy()
+        return list(files)
+    except Exception:
+        pass
+    print("请把 HDR 照片拖进本窗口（或输入路径），多个文件用空格分隔，然后按回车：")
+    try:
+        line = input("> ").strip()
+    except EOFError:
+        return []
+    import shlex
+    try:
+        return shlex.split(line, posix=(os.name != "nt"))
+    except ValueError:
+        return [line]
+
+
 def main(argv=None):
     _utf8_console()
+    interactive = argv is None and len(sys.argv) <= 1
+    pause = interactive or (argv is None and _launched_by_double_click())
+    try:
+        return _main(argv, interactive)
+    finally:
+        if pause:
+            try:
+                input("\n按回车键退出…")
+            except EOFError:
+                pass
+
+
+def _main(argv, interactive):
     p = argparse.ArgumentParser(
-        description="使用 ITU-R BT.2390 EETF 将 HDR 照片转换为 SDR（完全忽略 gain map）",
+        description="使用 ITU-R BT.2390 EETF 将 HDR 照片转换为 SDR（完全忽略 gain map）。"
+                    "不带参数运行（如双击）会弹出文件选择框；也可把照片直接拖到程序图标上。",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    p.add_argument("input")
+    p.add_argument("input", nargs="*", help="一个或多个 HDR 照片")
     p.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
-    p.add_argument("-o", "--output", help="输出路径（.jpg/.png/.tif/.webp），默认 <输入名>_sdr.jpg")
+    p.add_argument("-o", "--output", help="输出路径（.jpg/.png/.tif/.webp），仅限单个输入；默认 <输入名>_sdr.jpg")
+    p.add_argument("--format", choices=["jpg", "png", "tif", "webp"], default="jpg",
+                   help="未指定 -o 时的输出格式")
     g = p.add_argument_group("色调映射")
     g.add_argument("--sdr-white", type=float, default=203.0,
                    help="映射为 SDR 100%% 白的 HDR 亮度（nit）。BT.2408 参考白为 203")
@@ -616,10 +676,40 @@ def main(argv=None):
     g.add_argument("--quality", type=int, default=95, help="JPEG/WebP 质量")
     g.add_argument("--no-exif", action="store_true", help="不保留 EXIF")
     args = p.parse_args(argv)
-    if not args.output:
-        args.output = os.path.splitext(args.input)[0] + "_sdr.jpg"
-    process(args)
+    inputs = list(args.input)
+    if not inputs:
+        print(f"hdr2sdr {__version__} — BT.2390 EETF HDR → SDR")
+        inputs = _pick_files()
+    inputs = [s.strip().strip('"').strip("'") for s in inputs if s.strip()]
+        if not inputs:
+            print("没有选择文件。命令行用法见 hdr2sdr --help")
+            return 1
+    if args.output and len(inputs) > 1:
+        p.error("-o 只能用于单个输入文件；多个文件时会在原文件旁生成 <名称>_sdr.<格式>")
+
+    failed = 0
+    for i, src in enumerate(inputs, 1):
+        if len(inputs) > 1:
+            print(f"\n[{i}/{len(inputs)}] {src}")
+        a = argparse.Namespace(**vars(args))
+        a.input = src
+        a.output = args.output or os.path.splitext(src)[0] + "_sdr." + args.format
+        try:
+            if not os.path.isfile(src):
+                raise SystemExit(f"错误：找不到文件 {src}")
+            process(a)
+        except SystemExit as e:
+            failed += 1
+            print(e.code if isinstance(e.code, str) else f"失败（{e.code}）", file=sys.stderr)
+        except Exception as e:                      # 单个文件出错不影响其余文件
+            failed += 1
+            print(f"错误：{type(e).__name__}: {e}", file=sys.stderr)
+    if len(inputs) > 1:
+        print(f"\n完成：成功 {len(inputs) - failed} 个，失败 {failed} 个")
+    if failed and len(inputs) == 1 and not interactive:
+        raise SystemExit(1)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

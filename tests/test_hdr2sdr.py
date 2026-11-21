@@ -117,10 +117,27 @@ def test_modes(images, tmp_path, mode):
     assert out.exists()
 
 
-def test_refuses_sdr(images, tmp_path):
-    with pytest.raises(SystemExit) as ex:
+def test_refuses_sdr(images, tmp_path, capsys):
+    with pytest.raises(SystemExit):
         run(images["sdr.avif"], "-o", tmp_path / "o.jpg")
-    assert "gain map" in str(ex.value)
+    assert "gain map" in capsys.readouterr().err
+
+
+def test_batch_continues_after_error(images, tmp_path, capsys):
+    import shutil
+    a = tmp_path / "a.avif"
+    b = tmp_path / "b.png"
+    shutil.copy(images["pq.avif"], a)
+    shutil.copy(images["pq.png"], b)
+    rc = h.main([str(a), str(tmp_path / "missing.avif"), str(b), "--format", "png"])
+    assert rc == 1
+    assert (tmp_path / "a_sdr.png").exists() and (tmp_path / "b_sdr.png").exists()
+    assert "成功 2 个，失败 1 个" in capsys.readouterr().out
+
+
+def test_output_flag_single_only(images, tmp_path):
+    with pytest.raises(SystemExit):
+        run(images["pq.avif"], images["pq.png"], "-o", tmp_path / "o.jpg")
 
 
 def test_refuses_jpeg(tmp_path):

@@ -26,11 +26,17 @@ hdr2sdr --help
 
 ## 用法
 
+**双击运行**：弹出文件选择框，可一次选多张照片，结果保存在原文件旁（`<名称>_sdr.jpg`），处理完窗口会停住方便查看。
+**拖放**：把一张或多张照片直接拖到程序图标上。
+
+**命令行**：
+
 ```bash
 hdr2sdr photo.avif                                  # → photo_sdr.jpg（sRGB）
 hdr2sdr photo.heic -o out.png --bits 16 --gamut p3  # 16 bit Display P3 PNG
 hdr2sdr merge.exr --linear-white 203                # 线性 EXR，1.0 = 203 nit
 hdr2sdr photo.jxl --knee-offset 0.3                 # 拐点更高，保留更多中间调
+hdr2sdr *.avif --format png                         # 批量转换，单张出错不影响其余
 ```
 
 ## 支持的格式
@@ -72,6 +78,7 @@ hdr2sdr photo.jxl --knee-offset 0.3                 # 拐点更高，保留更�
 | `--gamut-map` | compress | `compress` / `clip` |
 | `--bits` | 8 | 8 / 16 |
 | `--quality` | 95 | JPEG / WebP 质量 |
+| `--format` | jpg | 未指定 `-o` 时的输出格式：jpg / png / tif / webp |
 | `--no-exif` | | 不保留 EXIF（默认保留，但方向置 1、删除 MakerNote） |
 
 ## 开发
@@ -81,7 +88,7 @@ pip install -e ".[test]"
 pytest
 ```
 
-推送 `v*` 标签（如 `git tag v1.0.1 && git push --tags`）会自动构建四个平台的可执行文件并发布 Release。
+修改 `hdr2sdr_eetf.py` 中的 `__version__` 并推送到 `main`，Release 工作流会自动打 `v<版本号>` 标签、构建四个平台的可执行文件并发布；手动推送 `v*` 标签也可以。
 
 ## 参考
 
